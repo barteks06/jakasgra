@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block Dodge</title>
+    <style>
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background-color: #eeeeee;
+}
+
+canvas {
+    display: block;
+    background-color: #eeeeee;
+}
+
+#scoreBoard {
+    position: absolute;
+    top: 15px;
+    left: 20px;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+#scoreBoard p {
+    margin: 5px 0;
+}
+
+#livesBoard {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+#lives {
+    color: red;
+}
+
+#pauseButton {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    padding: 12px 20px;
+    border: 2px solid #777777;
+    border-radius: 8px;
+    background-color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#pauseButton:hover {
+    background-color: #dddddd;
+}
+
+#startScreen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(238, 238, 238, 0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.menu {
+    width: 350px;
+    padding: 30px;
+    background-color: white;
+    border: 2px solid #999999;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.menu h1 {
+    margin-top: 0;
+}
+
+#startButton {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 6px;
+    background-color: black;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.hidden {
+    display: none !important;
+}
+
+</style>
+</head> 
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="scoreBoard">
+        <p>WYNIK: <span id="score">0</span></p>
+        <p>REKORD: <span id="bestScore">0</span></p>
+    </div>
+
+    <div id="livesBoard">
+        <p>ŻYCIA: <span id="lives">❤❤❤</span></p>
+    </div>
+
+    <button id="pauseButton">PAUZA</button>
+
+    <div id="startScreen">
+        <div class="menu">
+            <h1>BLOCK DODGE</h1>
+            <p>Unikaj spadających klocków</p>
+            <button id="startButton">START</button>
+        </div>
+    </div>
+
+    <script>
+const canvas = document.getElementById("gameCanvas");
+const context = canvas.getContext("2d");
+
+const scoreText = document.getElementById("score");
+const bestScoreText = document.getElementById("bestScore");
+const livesText = document.getElementById("lives");
+
+const startScreen = document.getElementById("startScreen");
+const startButton = document.getElementById("startButton");
+const pauseButton = document.getElementById("pauseButton");
+
+let screenWidth = window.innerWidth;
+let screenHeight = window.innerHeight;
+
+canvas.width = screenWidth;
+canvas.height = screenHeight;
+
+let gameStarted = false;
+let gamePaused = false;
+
+let score = 0;
+let lives = 3;
+let bestScore = localStorage.getItem("bestScore");
+
+if (bestScore === null) {
+    bestScore = 0;
+}
+
+bestScoreText.textContent = bestScore;
+
+let player = {
+    x: screenWidth / 2,
+    y: screenHeight - 120,
+    radius: 15,
+    speed: 5
+};
+
+let blocks = [];
+let keys = {};
+
+let blockTimer = 0;
+let blockDelay = 45;
+let invincibleTime = 0;
+
+const blockColors = [
+    "#1462ff",
+    "#ff2626",
+    "#18b943",
+    "#ffc400",
+    "#9d28c5",
+    "#ff6a1a"
+];
+
+function resizeGame() {
+    screenWidth = window.innerWidth;
+    screenHeight = window.innerHeight;
+
+    canvas.width = screenWidth;
+    canvas.height = screenHeight;
+
+    if (player.x > screenWidth - player.radius) {
+        player.x = screenWidth - player.radius;
+    }
+
+    if (player.y > screenHeight - player.radius) {
+        player.y = screenHeight - player.radius;
+    }
+}
+
+function resetGame() {
+    score = 0;
+    lives = 3;
+    blocks = [];
+    blockTimer = 0;
+    blockDelay = 45;
+    invincibleTime = 0;
+
+    player.x = screenWidth / 2;
+    player.y = screenHeight - 120;
+
+    updateInterface();
+}
+
+function updateInterface() {
+    scoreText.textContent = Math.floor(score);
+    bestScoreText.textContent = bestScore;
+
+    let hearts = "";
+
+    for (let i = 0; i < lives; i++) {
+        hearts += "❤";
+    }
+
+    livesText.textContent = hearts;
+}
+
+function createBlock() {
+    let blockWidth = 30 + Math.random() * 80;
+    let blockHeight = 30 + Math.random() * 70;
+
+    let block = {
+        x: Math.random() * (screenWidth - blockWidth),
+        y: -blockHeight,
+        width: blockWidth,
+        height: blockHeight,
+        speed: 2 + Math.random() * 3 + score / 500,
+        color: blockColors[Math.floor(Math.random() * blockColors.length)]
+    };
+
+    blocks.push(block);
+}
+
+function movePlayer() {
+    let moveX = 0;
+    let moveY = 0;
+
+    if (keys["ArrowLeft"] || keys["a"]) {
+        moveX = -1;
+    }
+
+    if (keys["ArrowRight"] || keys["d"]) {
+        moveX = 1;
+    }
+
+    if (keys["ArrowUp"] || keys["w"]) {
+        moveY = -1;
+    }
+
+    if (keys["ArrowDown"] || keys["s"]) {
+        moveY = 1;
+    }
+
+    if (moveX !== 0 && moveY !== 0) {
+        moveX = moveX * 0.7;
+        moveY = moveY * 0.7;
+    }
+
+    player.x += moveX * player.speed;
+    player.y += moveY * player.speed;
+
+    if (player.x < player.radius) {
+        player.x = player.radius;
+    }
+
+    if (player.x > screenWidth - player.radius) {
+        player.x = screenWidth - player.radius;
+    }
+
+    if (player.y < player.radius) {
+        player.y = player.radius;
+    }
+
+    if (player.y > screenHeight - player.radius) {
+        player.y = screenHeight - player.radius;
+    }
+}
+
+function checkCollision(block) {
+    let closestX = player.x;
+    let closestY = player.y;
+
+    if (player.x < block.x) {
+        closestX = block.x;
+    } else if (player.x > block.x + block.width) {
+        closestX = block.x + block.width;
+    }
+
+    if (player.y < block.y) {
+        closestY = block.y;
+    } else if (player.y > block.y + block.height) {
+        closestY = block.y + block.height;
+    }
+
+    let distanceX = player.x - closestX;
+    let distanceY = player.y - closestY;
+
+    let distance = distanceX * distanceX + distanceY * distanceY;
+
+    return distance < player.radius * player.radius;
+}
+
+function updateBlocks() {
+    blockTimer++;
+
+    if (blockTimer >= blockDelay) {
+        createBlock();
+        blockTimer = 0;
+
+        if (blockDelay > 15) {
+            blockDelay = blockDelay - 0.2;
+        }
+    }
+
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        blocks[i].y += blocks[i].speed;
+
+        if (invincibleTime <= 0 && checkCollision(blocks[i])) {
+            blocks.splice(i, 1);
+            lives--;
+            invincibleTime = 60;
+
+            updateInterface();
+
+            if (lives <= 0) {
+                gameOver();
+                return;
+            }
+        } else if (blocks[i].y > screenHeight) {
+            blocks.splice(i, 1);
+        }
+    }
+}
+
+function drawPlayer() {
+    if (invincibleTime > 0 && Math.floor(invincibleTime / 5) % 2 === 0) {
+        return;
+    }
+
+    context.beginPath();
+    context.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    context.fillStyle = "black";
+    context.fill();
+}
+
+function drawBlocks() {
+    for (let i = 0; i < blocks.length; i++) {
+        context.fillStyle = blocks[i].color;
+        context.fillRect(
+            blocks[i].x,
+            blocks[i].y,
+            blocks[i].width,
+            blocks[i].height
+        );
+    }
+}
+
+function drawGame() {
+    context.clearRect(0, 0, screenWidth, screenHeight);
+
+    context.fillStyle = "#eeeeee";
+    context.fillRect(0, 0, screenWidth, screenHeight);
+
+    drawBlocks();
+    drawPlayer();
+}
+
+function gameLoop() {
+    if (!gameStarted || gamePaused) {
+        return;
+    }
+
+    movePlayer();
+    updateBlocks();
+
+    if (invincibleTime > 0) {
+        invincibleTime--;
+    }
+
+    score += 0.1;
+
+    updateInterface();
+    drawGame();
+
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    resetGame();
+
+    gameStarted = true;
+    gamePaused = false;
+
+    startScreen.classList.add("hidden");
+    pauseButton.textContent = "PAUZA";
+
+    gameLoop();
+}
+
+function pauseGame() {
+    if (!gameStarted) {
+        return;
+    }
+
+    gamePaused = !gamePaused;
+
+    if (gamePaused) {
+        pauseButton.textContent = "WZNÓW";
+    } else {
+        pauseButton.textContent = "PAUZA";
+        gameLoop();
+    }
+}
+
+function gameOver() {
+    gameStarted = false;
+
+    let finalScore = Math.floor(score);
+
+    if (finalScore > bestScore) {
+        bestScore = finalScore;
+        localStorage.setItem("bestScore", bestScore);
+    }
+
+    updateInterface();
+
+    startScreen.classList.remove("hidden");
+    document.querySelector(".menu h1").textContent = "KONIEC GRY";
+    document.querySelector(".menu p").textContent =
+        "Twój wynik: " + finalScore + " | Rekord: " + bestScore;
+
+    startButton.textContent = "ZAGRAJ PONOWNIE";
+}
+
+window.addEventListener("keydown", function(event) {
+    keys[event.key] = true;
+    keys[event.key.toLowerCase()] = true;
+
+    if (event.key.toLowerCase() === "p") {
+        pauseGame();
+    }
+});
+
+window.addEventListener("keyup", function(event) {
+    keys[event.key] = false;
+    keys[event.key.toLowerCase()] = false;
+});
+
+window.addEventListener("resize", resizeGame);
+
+startButton.addEventListener("click", startGame);
+pauseButton.addEventListener("click", pauseGame);
+
+updateInterface();
+drawGame();
+
+</script>
+</body>
+</html>
